@@ -181,5 +181,5 @@ func requestIfaceName(request *rpc.GuestRequest) (string, error) {
 	if request.Guest == nil || request.Guest.Id == "" {
 		return "", errors.New("missing guest with id")
 	}
-	return "mist" + strings.Split(request.Guest.Id, "-")[4], nil
+	return strings.Split(request.Guest.Id, "-")[4], nil
 }
