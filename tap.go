@@ -37,7 +37,7 @@ func createTAPIface(ifaceName string) error {
 
 	// Populate the file from the template. If there's a problem, clean up
 	contents := fmt.Sprintf(tapTemplate, ifaceName)
-	_, err := file.Write([]byte(contents))
+	_, err = file.Write([]byte(contents))
 	file.Close()
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -70,8 +70,8 @@ func deleteTAPIface(ifaceName string) error {
 }
 
 func restartNetworkd() error {
-	cmd := command{"command": "systemctl"}
-	output, err := cmd.Run("restart", "systemd-networkd")
+	cmd := command{command: "systemctl"}
+	_, err := cmd.Run("restart", "systemd-networkd")
 	if err != nil {
 		return err
 	}
