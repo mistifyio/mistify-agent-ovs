@@ -1,29 +1,185 @@
 package ovs
 
-func ovs(args ...string) ([][]string, error) {
+import (
+	"encoding/json"
+	"errors"
+	"net/http"
+	"strings"
+
+	log "github.com/Sirupsen/logrus"
+	"github.com/mistifyio/mistify-agent/client"
+	"github.com/mistifyio/mistify-agent/rpc"
+)
+
+type (
+	// ovsIfaceData is a struct to help in decoding interface related output
+	// from ovs-vsctl
+	ovsIfaceData struct {
+		Headings []string
+		Data     [][]string
+	}
+
+	// OVS is the Mistify OS subagent service
+	OVS struct {
+		bridge string
+	}
+)
+
+func ovsIfaceListJSONToNic(bridge, input string) ([]*client.Nic, error) {
+	ifaceData := &ovsIfaceData{}
+	if err := json.Unmarshal([]byte(input), ifaceData); err != nil {
+		log.WithFields(log.Fields{
+			"error": err,
+			"input": input,
+		}).Error("failed to parse ovs iface json")
+		return nil, err
+	}
+
+	// Get a mapping of header name to array index
+	headings := make(map[string]int)
+	for i, colname := range ifaceData.Headings {
+		headings[colname] = i
+	}
+
+	// Assemble results
+	results := make([]*client.Nic, len(ifaceData.Data))
+	for i, row := range ifaceData.Data {
+		results[i] = &client.Nic{
+			Name:    row[headings["name"]],
+			Device:  row[headings["name"]],
+			Network: bridge,
+			Mac:     row[headings["mac_in_use"]],
+		}
+	}
+
+	return results, nil
+}
+
+func ovs(args ...string) ([]string, error) {
 	cmd := command{command: "ovs-vsctl"}
 	return cmd.Run(append([]string{"--format", "json"}, args...)...)
 }
 
-func listOVSIfaces(bridge string) ([]*Iface, error) {
+func listOVSIfaces(bridge string) ([]*client.Nic, error) {
 	args := []string{
 		"list-ifaces",
 		bridge,
 	}
 
-	resultLines, err := ovs(args...)
+	ifaceNames, err := ovs(args...)
 	if err != nil {
 		return nil, err
 	}
 
-	ifaces := make([]*Iface, len(resultLines))
-	for i, resultLine := range resultLines {
+	if len(ifaceNames) == 0 {
+		return []*client.Nic{}, nil
+	}
 
+	return getOVSIfaces(bridge, ifaceNames...)
+}
+
+func getOVSIfaces(bridge string, ifaceNames ...string) ([]*client.Nic, error) {
+	args := []string{
+		"--columns",
+		"name,mac_in_use,type",
+		"list",
+		"Interface",
+	}
+	args = append(args, ifaceNames...)
+	results, err := ovs(args...)
+	if err != nil {
+		return nil, err
+	}
+
+	// The json formatting for list returns the entire result on one line
+	ifaceListJSON := results[0]
+	return ovsIfaceListJSONToNic(bridge, ifaceListJSON)
+}
+
+func addOVSIface(bridge, ifaceName string) (*client.Nic, error) {
+	args := []string{
+		"add-port",
+		bridge,
+		ifaceName,
+	}
+	if _, err := ovs(args...); err != nil {
+		return nil, err
+	}
+
+	nics, err := getOVSIfaces(bridge, ifaceName)
+	if err != nil {
+		return nil, err
+	}
+	return nics[0], nil
+}
+
+func deleteOVSIface(bridge, ifaceName string) error {
+	args := []string{
+		"del-port",
+		bridge,
+		ifaceName,
+	}
+	_, err := ovs(args...)
+	return err
+}
+
+// NewOVS creates a new OVS object
+func NewOVS(bridge string) *OVS {
+	return &OVS{
+		bridge: bridge,
 	}
 }
-func getOVSIface(bridge, ifaceName string) (*Iface, error) {
+
+// AddGuestInterface creates a new interface for a guest
+func (ovs *OVS) AddGuestInterface(h *http.Request, request *rpc.GuestRequest, response *rpc.GuestResponse) error {
+	ifaceName, err := requestIfaceName(request)
+	if err != nil {
+		return err
+	}
+
+	// Create TAP interface
+	if err := createTAPIface(ifaceName); err != nil {
+		return err
+	}
+
+	// Add TAP interface to OVS
+	nic, err := addOVSIface(ovs.bridge, ifaceName)
+	if err != nil {
+		// Clean up
+		_ = deleteTAPIface(ifaceName)
+		return err
+	}
+
+	response.Guest = request.Guest
+	response.Guest.Nics = []client.Nic{*nic}
+	return nil
 }
-func addOVSIface(bridge, ifaceName string) (*Iface, error) {
+
+// RemoveGuestInterface removes the interface for a guest
+func (ovs *OVS) RemoveGuestInterface(h *http.Request, request *rpc.GuestRequest, response *rpc.GuestResponse) error {
+	ifaceName, err := requestIfaceName(request)
+	if err != nil {
+		return err
+	}
+
+	// Remove TAP interface from OVS
+	if err := deleteOVSIface(ovs.bridge, ifaceName); err != nil {
+		return err
+	}
+
+	// Remove TAP Interface
+	if err := deleteTAPIface(ifaceName); err != nil {
+		return err
+	}
+
+	response.Guest = request.Guest
+	response.Guest.Nics = []client.Nic{}
+	return nil
 }
-func removeOVSIface(bridge, ifaceName string) error {
+
+func requestIfaceName(request *rpc.GuestRequest) (string, error) {
+	if request.Guest == nil || request.Guest.Id == "" {
+		return "", errors.New("missing guest with id")
+	}
+	return "mist" + strings.Split(request.Guest.Id, "-")[4], nil
 }
