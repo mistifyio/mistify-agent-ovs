@@ -65,6 +65,17 @@ func deleteTAPIface(ifaceName string) error {
 		return err
 	}
 
+	// ip link delete NAME
+	cmd := command{command: "ip"}
+	args := []string{
+		"link",
+		"delete",
+		ifaceName,
+	}
+	if _, err := cmd.Run(args...); err != nil {
+		return err
+	}
+
 	// Restart networkd so changes take effect
 	return restartNetworkd()
 }
