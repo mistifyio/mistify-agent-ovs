@@ -25,6 +25,8 @@ type (
 	}
 )
 
+// ovsIfaceListJSONtoNic converts the json output of an
+// `ovs-vsctl list Interface` command to an array of client.Nic objects
 func ovsIfaceListJSONToNic(bridge, input string) ([]*client.Nic, error) {
 	ifaceData := &ovsIfaceData{}
 	if err := json.Unmarshal([]byte(input), ifaceData); err != nil {
@@ -55,11 +57,13 @@ func ovsIfaceListJSONToNic(bridge, input string) ([]*client.Nic, error) {
 	return results, nil
 }
 
+// ovs is a convenience wrapper for running ovs-vsctl commands
 func ovs(args ...string) ([]string, error) {
 	cmd := command{command: "ovs-vsctl"}
 	return cmd.Run(append([]string{"--format", "json"}, args...)...)
 }
 
+// listOVSIfaces gets a list of interfaces attached to a bridge
 func listOVSIfaces(bridge string) ([]*client.Nic, error) {
 	args := []string{
 		"list-ifaces",
@@ -78,6 +82,7 @@ func listOVSIfaces(bridge string) ([]*client.Nic, error) {
 	return getOVSIfaces(bridge, ifaceNames...)
 }
 
+// getOVSIfaces gets one or more interfaces attached to a bridge, by name
 func getOVSIfaces(bridge string, ifaceNames ...string) ([]*client.Nic, error) {
 	args := []string{
 		"--columns",
@@ -96,6 +101,7 @@ func getOVSIfaces(bridge string, ifaceNames ...string) ([]*client.Nic, error) {
 	return ovsIfaceListJSONToNic(bridge, ifaceListJSON)
 }
 
+// addOVSIface attaches an interface to a bridge
 func addOVSIface(bridge, ifaceName string) (*client.Nic, error) {
 	args := []string{
 		"add-port",
@@ -113,6 +119,7 @@ func addOVSIface(bridge, ifaceName string) (*client.Nic, error) {
 	return nics[0], nil
 }
 
+// deleteOVSIface removes an interface from a bridge
 func deleteOVSIface(bridge, ifaceName string) error {
 	args := []string{
 		"del-port",
@@ -177,6 +184,7 @@ func (ovs *OVS) RemoveGuestInterface(h *http.Request, request *rpc.GuestRequest,
 	return nil
 }
 
+// requestIfaceName determines the interface name from guest request information
 func requestIfaceName(request *rpc.GuestRequest) (string, error) {
 	if request.Guest == nil || request.Guest.Id == "" {
 		return "", errors.New("missing guest with id")

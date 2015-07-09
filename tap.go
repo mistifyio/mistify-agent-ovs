@@ -8,6 +8,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 )
 
+// tapTemplate is the NetDev file template for a TAP interface
 var tapTemplate = `
 [NetDev]
 Name=%s
@@ -16,12 +17,15 @@ Kind=tap
 [Tap]
 `
 
-var netDevPath = "/etc/systemd/network"
+// netDevDir is the directory systemd-networkd checks for new interface definitions
+var netDevDir = "/etc/systemd/network"
 
+// netDevFilepath builds the full path for a NetDev file
 func netDevFilepath(ifaceName string) string {
-	return filepath.Join(netDevPath, fmt.Sprintf("%s.netdev", ifaceName))
+	return filepath.Join(netDevDir, fmt.Sprintf("%s.netdev", ifaceName))
 }
 
+// createTAPIface creates a new TAP interface
 func createTAPIface(ifaceName string) error {
 	filepath := netDevFilepath(ifaceName)
 
@@ -53,6 +57,7 @@ func createTAPIface(ifaceName string) error {
 	return restartNetworkd()
 }
 
+// deleteTAPIface removes a TAP interface
 func deleteTAPIface(ifaceName string) error {
 	filepath := netDevFilepath(ifaceName)
 
@@ -65,7 +70,7 @@ func deleteTAPIface(ifaceName string) error {
 		return err
 	}
 
-	// ip link delete NAME
+	// Remove the interface
 	cmd := command{command: "ip"}
 	args := []string{
 		"link",
@@ -80,6 +85,7 @@ func deleteTAPIface(ifaceName string) error {
 	return restartNetworkd()
 }
 
+// restartNetworkd restarts systemd-networkd
 func restartNetworkd() error {
 	cmd := command{command: "systemctl"}
 	_, err := cmd.Run("restart", "systemd-networkd")
