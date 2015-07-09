@@ -102,11 +102,15 @@ func getOVSIfaces(bridge string, ifaceNames ...string) ([]*client.Nic, error) {
 }
 
 // addOVSIface attaches an interface to a bridge
-func addOVSIface(bridge, ifaceName string) (*client.Nic, error) {
+func addOVSIface(bridge, ifaceName string, vlanTag int) (*client.Nic, error) {
+	if vlanTag <= 0 {
+		vlanTag = 1
+	}
 	args := []string{
 		"add-port",
 		bridge,
 		ifaceName,
+		"tag=" + vlanTag,
 	}
 	if _, err := ovs(args...); err != nil {
 		return nil, err
@@ -150,7 +154,7 @@ func (ovs *OVS) AddGuestInterface(h *http.Request, request *rpc.GuestRequest, re
 	}
 
 	// Add TAP interface to OVS
-	nic, err := addOVSIface(ovs.bridge, ifaceName)
+	nic, err := addOVSIface(ovs.bridge, ifaceName, 0)
 	if err != nil {
 		// Clean up
 		_ = deleteTAPIface(ifaceName)
