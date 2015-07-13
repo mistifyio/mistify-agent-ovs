@@ -3,6 +3,7 @@ package ovs
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -110,7 +111,7 @@ func addOVSIface(bridge, ifaceName string, vlanTag int) (*client.Nic, error) {
 		"add-port",
 		bridge,
 		ifaceName,
-		"tag=" + vlanTag,
+		fmt.Sprintf("tag=%d", vlanTag),
 	}
 	if _, err := ovs(args...); err != nil {
 		return nil, err
