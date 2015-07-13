@@ -58,6 +58,15 @@ func ovsIfaceListJSONToNic(bridge, input string) ([]*client.Nic, error) {
 	return results, nil
 }
 
+// cleanNic removes interface details from a nic object, leaving the outside
+// configured details like bridge and IP
+func cleanNic(nic client.Nic) client.Nic {
+	nic.Name = ""
+	nic.Device = ""
+	nic.Mac = ""
+	return nic
+}
+
 // ovs is a convenience wrapper for running ovs-vsctl commands
 func ovs(args ...string) ([]string, error) {
 	cmd := command{command: "ovs-vsctl"}
@@ -169,23 +178,28 @@ func (ovs *OVS) AddGuestInterface(h *http.Request, request *rpc.GuestRequest, re
 
 // RemoveGuestInterface removes the interface for a guest
 func (ovs *OVS) RemoveGuestInterface(h *http.Request, request *rpc.GuestRequest, response *rpc.GuestResponse) error {
-	ifaceName, err := requestIfaceName(request)
-	if err != nil {
-		return err
+	if request.Guest == nil || request.Guest.Nics == nil {
+		return errors.New("missing guest with nics")
 	}
+	for i, nic := range request.Guest.Nics {
+		if nic.Name == "" {
+			continue
+		}
 
-	// Remove TAP interface from OVS
-	if err := deleteOVSIface(ovs.bridge, ifaceName); err != nil {
-		return err
-	}
+		// Remove TAP interface from OVS
+		if err := deleteOVSIface(nic.Network, nic.Name); err != nil {
+			return err
+		}
 
-	// Remove TAP Interface
-	if err := deleteTAPIface(ifaceName); err != nil {
-		return err
+		// Remove TAP Interface
+		if err := deleteTAPIface(nic.Name); err != nil {
+			return err
+		}
+
+		request.Guest.Nics[i] = cleanNic(nic)
 	}
 
 	response.Guest = request.Guest
-	response.Guest.Nics = []client.Nic{}
 	return nil
 }
 
