@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 
 	log "github.com/Sirupsen/logrus"
@@ -22,7 +25,10 @@ type (
 
 	// OVS is the Mistify OS subagent service
 	OVS struct {
-		bridge string
+		bridge          string
+		ifacePrefix     string
+		lastIfaceNumber int
+		maxIfaceNumber  int
 	}
 )
 
@@ -112,7 +118,7 @@ func getOVSIfaces(bridge string, ifaceNames ...string) ([]*client.Nic, error) {
 }
 
 // addOVSIface attaches an interface to a bridge
-func addOVSIface(bridge, ifaceName string, vlanTag int) (*client.Nic, error) {
+func addOVSIface(bridge, ifaceName string, vlanTag int) error {
 	if vlanTag <= 0 {
 		vlanTag = 1
 	}
@@ -122,15 +128,8 @@ func addOVSIface(bridge, ifaceName string, vlanTag int) (*client.Nic, error) {
 		ifaceName,
 		fmt.Sprintf("tag=%d", vlanTag),
 	}
-	if _, err := ovs(args...); err != nil {
-		return nil, err
-	}
-
-	nics, err := getOVSIfaces(bridge, ifaceName)
-	if err != nil {
-		return nil, err
-	}
-	return nics[0], nil
+	_, err := ovs(args...)
+	return err
 }
 
 // deleteOVSIface removes an interface from a bridge
@@ -145,39 +144,126 @@ func deleteOVSIface(bridge, ifaceName string) error {
 }
 
 // NewOVS creates a new OVS object
-func NewOVS(bridge string) *OVS {
-	return &OVS{
-		bridge: bridge,
+func NewOVS(bridge string) (*OVS, error) {
+	ovs := &OVS{
+		bridge:      bridge,
+		ifacePrefix: "mist",
 	}
+	// 15 characters, minus the prefix and separator
+	// e.g. No prefix, "." sep = 10^(15-1) - 1 = 99999999999999 = 14 characters
+	ovs.maxIfaceNumber = int(math.Pow10(15-(len(ovs.ifacePrefix)+1)) - 1)
+
+	// Find how high the numbering has gone
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+	for _, iface := range ifaces {
+		parts := strings.SplitN(iface.Name, ".", 2)
+		if len(parts) != 2 || parts[0] != "mist" {
+			continue
+		}
+		i, err := strconv.Atoi(parts[1])
+		if err != nil {
+			continue
+		}
+		if i > ovs.lastIfaceNumber {
+			ovs.lastIfaceNumber = i
+		}
+	}
+
+	return ovs, nil
 }
 
-// AddGuestInterface creates a new interface for a guest
-func (ovs *OVS) AddGuestInterface(h *http.Request, request *rpc.GuestRequest, response *rpc.GuestResponse) error {
-	ifaceName, err := requestIfaceName(request)
-	if err != nil {
-		return err
-	}
+// newIfaceName generates a new interface name
+func (ovs *OVS) newIfaceName() (string, error) {
+	initial := ovs.lastIfaceNumber
+	newIfaceNumber := ovs.lastIfaceNumber + 1
+	ifaceName := ""
+	for newIfaceNumber != initial {
+		// Too high, start back at 0
+		if newIfaceNumber > ovs.maxIfaceNumber {
+			newIfaceNumber = 0
+		}
 
-	// Create TAP interface
-	if err := createTAPIface(ifaceName); err != nil {
-		return err
-	}
+		ifaceName = fmt.Sprintf("%s.%d", ovs.ifacePrefix, newIfaceNumber)
 
-	// Add TAP interface to OVS
-	nic, err := addOVSIface(ovs.bridge, ifaceName, 0)
-	if err != nil {
-		// Clean up
-		_ = deleteTAPIface(ifaceName)
-		return err
+		// Check whether an interface with that name already exists
+		iface, err := net.InterfaceByName(ifaceName)
+		if err != nil && err.Error() != "no such network interface" {
+			log.WithFields(log.Fields{
+				"error":     err,
+				"ifaceName": ifaceName,
+			}).Error("failed to look up interface by name")
+			return "", err
+		}
+		ovs.lastIfaceNumber = newIfaceNumber
+		if iface == nil {
+			return ifaceName, nil
+		}
+		newIfaceNumber++
 	}
+	err := errors.New("no free interface names")
+	log.WithFields(log.Fields{
+		"error":          err,
+		"ifacePrefix":    ovs.ifacePrefix,
+		"maxIfaceNumber": ovs.maxIfaceNumber,
+	}).Error("unable to generate interface name")
+	return "", err
+}
 
+// AddGuestInterfaces creates new interfaces for a guest
+func (ovs *OVS) AddGuestInterfaces(h *http.Request, request *rpc.GuestRequest, response *rpc.GuestResponse) error {
+	if request.Guest == nil || request.Guest.Nics == nil {
+		return errors.New("missing guest with nics")
+	}
+	for i, nic := range request.Guest.Nics {
+		if nic.Name != "" {
+			continue
+		}
+
+		ifaceName, err := ovs.newIfaceName()
+		if err != nil {
+			return err
+		}
+
+		bridge := nic.Network
+		if bridge == "" {
+			bridge = ovs.bridge
+		}
+
+		// Create TAP interface
+		if err := createTAPIface(ifaceName); err != nil {
+			return err
+		}
+
+		// Add TAP interface to OVS
+		if err := addOVSIface(bridge, ifaceName, 0); err != nil {
+			// Clean up
+			_ = deleteTAPIface(ifaceName)
+			return err
+		}
+
+		// Populate the guest nic with new info
+		iface, err := net.InterfaceByName(ifaceName)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"error":     err,
+				"ifaceName": ifaceName,
+			}).Error("failed to look up interface by name")
+			return err
+		}
+		request.Guest.Nics[i].Name = iface.Name
+		request.Guest.Nics[i].Device = iface.Name
+		request.Guest.Nics[i].Network = bridge
+		request.Guest.Nics[i].Mac = iface.HardwareAddr.String()
+	}
 	response.Guest = request.Guest
-	response.Guest.Nics = []client.Nic{*nic}
 	return nil
 }
 
-// RemoveGuestInterface removes the interface for a guest
-func (ovs *OVS) RemoveGuestInterface(h *http.Request, request *rpc.GuestRequest, response *rpc.GuestResponse) error {
+// RemoveGuestInterfaces removes the interfaces for a guest
+func (ovs *OVS) RemoveGuestInterfaces(h *http.Request, request *rpc.GuestRequest, response *rpc.GuestResponse) error {
 	if request.Guest == nil || request.Guest.Nics == nil {
 		return errors.New("missing guest with nics")
 	}

@@ -26,7 +26,10 @@ func main() {
 		}).Fatal("Could not set up logging")
 	}
 
-	o := ovs.NewOVS(bridge)
+	o, err := ovs.NewOVS(bridge)
+	if err != nil {
+		os.Exit(1)
+	}
 	// Run HTTP Server
 	if err := o.RunHTTP(port); err != nil {
 		os.Exit(1)
