@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/mistifyio/mistify-agent/client"
@@ -25,10 +26,12 @@ type (
 
 	// OVS is the Mistify OS subagent service
 	OVS struct {
-		bridge          string
-		ifacePrefix     string
+		bridge         string
+		ifacePrefix    string
+		maxIfaceNumber int
+
+		lock            sync.Mutex
 		lastIfaceNumber int
-		maxIfaceNumber  int
 	}
 )
 
@@ -177,6 +180,9 @@ func NewOVS(bridge string) (*OVS, error) {
 
 // newIfaceName generates a new interface name
 func (ovs *OVS) newIfaceName() (string, error) {
+	ovs.lock.Lock()
+	defer ovs.lock.Unlock()
+
 	initial := ovs.lastIfaceNumber
 	newIfaceNumber := ovs.lastIfaceNumber + 1
 	ifaceName := ""
