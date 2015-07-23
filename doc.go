@@ -37,8 +37,8 @@ http://godoc.org/github.com/mistifyio/mistify-agent/rpc#GuestResponse
 
 RPC Methods
 
-	AddGuestInterface
-	RemoveGuestInterface
+	AddGuestInterfaces
+	RemoveGuestInterfaces
 
 See the godocs for each method's purpose
 */

@@ -1,6 +1,5 @@
 PREFIX := /opt/mistify
 SBIN_DIR=$(PREFIX)/sbin
-ETC_DIR=$(PREFIX)/etc
 
 cmd/mistify-agent-ovs/mistify-agent-ovs: cmd/mistify-agent-ovs/main.go
 	cd cmd/mistify-agent-ovs && \

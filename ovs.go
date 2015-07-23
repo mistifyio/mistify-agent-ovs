@@ -64,7 +64,7 @@ func ovsIfaceListJSONToNic(bridge, input string) ([]*client.Nic, error) {
 	return results, nil
 }
 
-// cleanNic removes interface details from a nic object, leaving the outside
+// cleanNic removes interface details from a nic object, leaving the externally
 // configured details like bridge and IP
 func cleanNic(nic client.Nic) client.Nic {
 	nic.Name = ""
@@ -160,7 +160,7 @@ func NewOVS(bridge string) (*OVS, error) {
 	}
 	for _, iface := range ifaces {
 		parts := strings.SplitN(iface.Name, ".", 2)
-		if len(parts) != 2 || parts[0] != "mist" {
+		if len(parts) != 2 || parts[0] != ovs.ifacePrefix {
 			continue
 		}
 		i, err := strconv.Atoi(parts[1])

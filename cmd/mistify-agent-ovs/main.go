@@ -15,7 +15,7 @@ func main() {
 	var bridge, logLevel string
 	flag.UintVarP(&port, "port", "p", 40001, "listen port")
 	flag.StringVarP(&bridge, "bridge", "b", "mistify0", "bridge to join interfaces to with OVS")
-	flag.StringVarP(&logLevel, "log-level", "l", "warning", "log level: debug/info/warning/error/critical/fatal")
+	flag.StringVarP(&logLevel, "log-level", "l", "warning", "log level: debug/info/warning/error/fatal")
 	flag.Parse()
 
 	// Set up logging
