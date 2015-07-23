@@ -38,11 +38,11 @@ func createTAPIface(ifaceName string) error {
 		}).Error("failed to create netdev file")
 		return err
 	}
+	defer file.Close()
 
 	// Populate the file from the template. If there's a problem, clean up
 	contents := fmt.Sprintf(tapTemplate, ifaceName)
 	_, err = file.Write([]byte(contents))
-	file.Close()
 	if err != nil {
 		log.WithFields(log.Fields{
 			"error":    err,
