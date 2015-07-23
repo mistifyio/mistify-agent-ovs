@@ -40,8 +40,8 @@ http://godoc.org/github.com/mistifyio/mistify-agent/rpc#GuestResponse
 
 ### RPC Methods
 
-    AddGuestInterface
-    RemoveGuestInterface
+    AddGuestInterfaces
+    RemoveGuestInterfaces
 
 See the godocs for each method's purpose
 
@@ -59,23 +59,23 @@ OVS is the Mistify OS subagent service
 #### func  NewOVS
 
 ```go
-func NewOVS(bridge string) *OVS
+func NewOVS(bridge string) (*OVS, error)
 ```
 NewOVS creates a new OVS object
 
-#### func (*OVS) AddGuestInterface
+#### func (*OVS) AddGuestInterfaces
 
 ```go
-func (ovs *OVS) AddGuestInterface(h *http.Request, request *rpc.GuestRequest, response *rpc.GuestResponse) error
+func (ovs *OVS) AddGuestInterfaces(h *http.Request, request *rpc.GuestRequest, response *rpc.GuestResponse) error
 ```
-AddGuestInterface creates a new interface for a guest
+AddGuestInterfaces creates new interfaces for a guest
 
-#### func (*OVS) RemoveGuestInterface
+#### func (*OVS) RemoveGuestInterfaces
 
 ```go
-func (ovs *OVS) RemoveGuestInterface(h *http.Request, request *rpc.GuestRequest, response *rpc.GuestResponse) error
+func (ovs *OVS) RemoveGuestInterfaces(h *http.Request, request *rpc.GuestRequest, response *rpc.GuestResponse) error
 ```
-RemoveGuestInterface removes the interface for a guest
+RemoveGuestInterfaces removes the interfaces for a guest
 
 #### func (*OVS) RunHTTP
 
