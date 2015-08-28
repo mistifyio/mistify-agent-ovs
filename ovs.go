@@ -297,8 +297,8 @@ func (ovs *OVS) RemoveGuestInterfaces(h *http.Request, request *rpc.GuestRequest
 
 // requestIfaceName determines the interface name from guest request information
 func requestIfaceName(request *rpc.GuestRequest) (string, error) {
-	if request.Guest == nil || request.Guest.Id == "" {
+	if request.Guest == nil || request.Guest.ID == "" {
 		return "", errors.New("missing guest with id")
 	}
-	return strings.Split(request.Guest.Id, "-")[4], nil
+	return strings.Split(request.Guest.ID, "-")[4], nil
 }
